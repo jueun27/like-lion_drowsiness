@@ -26,40 +26,6 @@ CSV 다운로드: 학생별 데이터 엑셀 저장 가능
 <img width="400" height="555" alt="image" src="https://github.com/user-attachments/assets/0f8281a2-647c-434a-9232-f0844a30282f" />
 
 
-
-## ⚙️ 핵심 기술
-1. 이중 비동기 파이프라인
-
-Feature Loop (10 FPS): 백그라운드에서 0.1초마다 특징점만 가볍게 추출하여 버퍼에 누적
-Broadcast Loop (1 FPS): 1초에 한 번 누적된 8초 데이터를 모델에 전달, 이때만 이미지 인코딩 수행
-효과: CPU 점유율 안정화, 대시보드 끊김 현상 제거
-
-2. MediaPipe 기반 특징 추출
-
-특징설명EAR (Eye Aspect Ratio)눈 감김 정도 측정MAR (Mouth Aspect Ratio)하품 감지Head Pose (Pitch/Yaw/Roll)고개 방향 측정Face Presence얼굴 부재 감지
-
-3. CNN+LSTM 시계열 모델
-
-입력: 80프레임(8초) × 5개 특징값 [EAR, MAR, Pitch, Yaw, Roll]
-구조: 1D-CNN (시계열 패턴 추출) + LSTM (시간 흐름 학습)
-무빙 윈도우: 단순 눈 깜빡임과 실제 졸음을 구분
-
-4. Zoom 맞춤형 정밀 Crop
-
-1920×1080 해상도 기준 Zoom UI 픽셀(상단 65px, 하단 70px, 좌우 120px) 제거
-갤러리 뷰 Grid를 학생별 타일로 정밀 분할
-
-
-## 📊 모델 성능
-구분AccuracyF1 Score (Macro)F1 Score (Drowsy)Rule-based (EAR 임계치)0.84670.84110.8115CNN+LSTM (시계열 모델)0.92000.91450.8929
-
-CNN+LSTM이 모든 지표에서 Rule-based 대비 우수한 성능을 보임
-
-최종 판정 기준
-
-<img width="400" height="300" alt="image" src="https://github.com/user-attachments/assets/6383814d-6d7a-45a5-9fef-2f68ba4b897e" />
-
-
 ## 📦 주요 라이브러리
 fastapi
 
