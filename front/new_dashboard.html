@@ -95,7 +95,6 @@
     .grid.view-cam .media-container {
       aspect-ratio: 16 / 9;
       height: auto;        /* 고정 height 제거 */
-      max-height: 200px;  /* 이 값 조정 */
     }
     .grid.view-cam .spark-wrap, .grid.view-cam .metrics { display: none; }
     .grid.view-cam .snapshot-placeholder { opacity: 1 !important; }
@@ -143,6 +142,27 @@
 
     svg { width: 100%; height: 100%; display: block; overflow: visible; }
   </style>
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(5px); }
+    .modal-content { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); width: 800px; max-width: 90%; max-height: 90vh; overflow-y: auto; color: var(--text); box-shadow: var(--shadow); }
+    .modal-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--panel); }
+    .modal-header h2 { margin: 0; font-size: 1.2rem; }
+    .close-btn { background: transparent; border: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; }
+    .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+    .report-summary { display: flex; gap: 20px; }
+    .summary-box { background: var(--panel); padding: 15px; border-radius: var(--radius-sm); flex: 1; text-align: center; border: 1px solid var(--border); }
+    .summary-box h4 { margin: 0 0 10px 0; color: var(--muted); font-size: 0.9rem; }
+    .summary-box .score { font-size: 1.8rem; font-weight: bold; color: var(--ok); }
+    .report-section { background: var(--panel); padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .report-section h3 { margin: 0 0 15px 0; font-size: 1rem; color: var(--info); }
+    .top-students { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+    .top-students li { display: flex; justify-content: space-between; padding: 10px; background: var(--panel-2); border-radius: 4px; }
+    .modal-footer { padding: 15px 20px; border-top: 1px solid var(--border); text-align: right; background: var(--panel); }
+  </style>
+  
 </head>
 <body>
   <div class="app">
@@ -160,7 +180,7 @@
         </div>
         <div class="summary-cards">
           <div class="summary-card"><div class="label">감시 대상</div><div class="value" id="sumStudents">16</div></div>
-          <div class="summary-card"><div class="label">경고 상태</div><div class="value" id="sumWarnings">0</div></div>
+          <div class="summary-card"><div class="label">졸음 유저</div><div class="value" id="sumWarnings">0</div></div>
           <div class="summary-card"><div class="label">누적 이벤트</div><div class="value" id="sumEvents">0</div></div>
           <div class="summary-card"><div class="label">총 부재 시간</div><div class="value" id="sumAbsent">0s</div></div>
         </div>
@@ -178,11 +198,47 @@
               <button type="button" class="layout-btn" id="btnLayout3" data-layout="3">3×3</button>
               <button type="button" class="layout-btn" id="btnLayout4" data-layout="4">4×4</button>
             </div>
+			<button id="btnShowReport" class="layout-btn" style="background: var(--ok); color: white; border-color: var(--ok); margin-left: 10px;">
+				종합 리포트 보기
+			</button>
+			
+			
           </div>
         </div>
         <div class="grid" id="studentGrid" data-layout="4"></div>
       </section>
     </main>
+	<div id="reportModal" class="modal-overlay">
+		<div class="modal-content">
+		  <div class="modal-header">
+			<h2>수업 참여도 종합 리포트</h2>
+			<button id="btnCloseReport" class="close-btn">&times;</button>
+		  </div>
+		  <div class="modal-body">
+			<div class="report-summary">
+			  <div class="summary-box">
+				<h4>전체 집중도 점수</h4>
+				<div id="reportScore" class="score">계산 중...</div>
+			  </div>
+			  <div class="summary-box">
+				<h4>총 징후 발생 건수</h4>
+				<div id="reportTotalEvents" class="score" style="color: var(--warn);">0건</div>
+			  </div>
+			</div>
+			<div class="report-section">
+			  <h3>시간대별 집중도 저하(경고) 흐름</h3>
+			  <canvas id="timelineChart" height="80"></canvas>
+			</div>
+			<div class="report-section">
+			  <h3>요주의 학생 Top 3</h3>
+			  <ul id="topStudentsList" class="top-students"></ul>
+			</div>
+		  </div>
+		  <div class="modal-footer">
+			<button id="btnDownloadCSV" class="ctrl-btn" style="background: var(--info); color: white;">엑셀(CSV) 다운로드</button>
+		  </div>
+		</div>
+	</div>
   </div>
 
   <script>
@@ -190,6 +246,7 @@
     // const WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
     const SELECTED_STUDENT_KEY = "dashboard_selected_student_id";
     const DETAIL_SNAPSHOT_KEY = "dashboard_selected_student_snapshot";
+	
 
     window.appState = {
       students: {},
@@ -202,8 +259,8 @@
       return {
         student_id: id, display_name: `학생 ${id.replace("tile_", "")}`,
         current_state: "normal", current_score: 0.1,
-        metrics: { eyes_closed_count: 0, head_down_count: 0, absent_total_sec: 0, warning_count: 0, drowsy_count: 0, avg_drowsy_sec: 0 },
-        history: { score: Array(24).fill(0.1) },
+        metrics: { eyes_closed_count: 0, head_down_count: 0, absent_total_sec: 0, warning_count: 0, drowsy_count: 0, avg_drowsy_sec: 0, msg_count: 0  },
+        history: { score: [] },
         last_update_ms: 0, image: null
       };
     }
@@ -218,11 +275,7 @@
     }
 
     function buildSparklineSVG(values) {
-      if (!values || values.length < 2) return "";
-      //const min = Math.min(...values);
-      //const max = Math.max(...values);
-      //const range = (max - min) || 1;
-	  
+      if (!values || values.length < 2) return "";	  
       const min = 0;
       const max = 1;
       const range = 1;
@@ -301,10 +354,7 @@
       }
 
       document.getElementById(`svg-${student.student_id}`).innerHTML = buildSparklineSVG(student.history.score);
-      //document.getElementById(`eye-${student.student_id}`).textContent = student.metrics.eyes_closed_count;
-      //document.getElementById(`head-${student.student_id}`).textContent = student.metrics.head_down_count;
-	  document.getElementById(`eye-${student.student_id}`).textContent
-        = `${student.metrics.drowsy_count}회`;
+	  document.getElementById(`eye-${student.student_id}`).textContent = `${student.metrics.eyes_closed_count}회`;
 	  document.getElementById(`head-${student.student_id}`).textContent
         = `평균 ${student.metrics.avg_drowsy_sec}초`;
 
@@ -327,13 +377,18 @@
         if (s) {
           s.current_state = data.state;
           s.image = data.image;
-          s.history.score.push(data.score || 0.1);
-          s.history.score.shift();
-          //if (data.event_label === 'eyes_closed_long') s.metrics.eyes_closed_count++;
-          //if (data.event_label === 'head_down_long') s.metrics.head_down_count++;
-          //if (data.event_label === 'face_absent') s.metrics.absent_total_sec += 5;
+          s.metrics.msg_count++;
+          const effectiveScore = s.metrics.msg_count <= 12 ? 0 : (data.score || 0);
+          s.history.score.push(effectiveScore);
+          
+		  // console.log("수신:", data.student_id, data.state, data.event_label);
+
 		  
-		  if (data.drowsy_count   !== undefined) s.metrics.drowsy_count   = data.drowsy_count;
+		  // 백엔드 누적값 대신, 연결 시점 이후의 전환 횟수만 프론트에서 직접 카운트
+		  if (data.flags?.fsm_triggered && data.state === 'drowsy_sign') {
+    		  s.metrics.eyes_closed_count++;
+		  }
+		  // onmessage 안에 이 줄이 없음
 		  if (data.avg_drowsy_sec !== undefined) s.metrics.avg_drowsy_sec = data.avg_drowsy_sec;
 		  if (data.event_label === 'face_absent') s.metrics.absent_total_sec += 1;
 		  
@@ -344,7 +399,8 @@
           // 전역 요약 업데이트
           const all = Object.values(appState.students);
           document.getElementById("sumWarnings").textContent = all.filter(st => st.current_state !== 'normal').length;
-          document.getElementById("sumEvents").textContent = all.reduce((acc, st) => acc + st.metrics.eyes_closed_count + st.metrics.head_down_count, 0);
+          document.getElementById("sumEvents").textContent =
+          all.reduce((acc, st) => acc + st.metrics.eyes_closed_count, 0);
           document.getElementById("sumAbsent").textContent = all.reduce((acc, st) => acc + st.metrics.absent_total_sec, 0) + "s";
         }
       };
@@ -361,6 +417,166 @@
       connect();
     }
     bootstrap();
+	
+	// ===== [신규 추가] 프론트엔드 리포트 생성 로직 =====
+    // ===== [신규 추가] 프론트엔드 리포트 생성 로직 (안전성 강화 버전) =====
+    // ===== [신규 추가] 프론트엔드 리포트 생성 로직 (경과 시간 기반) =====
+    const timelineHistory = [];
+    let chartInstance = null;
+    let elapsedSeconds = 0; // 경과 시간(초) 변수 추가
+
+    // 처음에 0초 기준 데이터를 하나 넣어둡니다.
+    timelineHistory.push({ time: "0초", events: 0, total: 0 });
+
+    // 1. 시간대별 차트 데이터 기록 (10초 주기)
+    setInterval(() => {
+      try {
+        elapsedSeconds += 10;
+        
+        // 초 단위 시간을 '10초', '1분', '1분 10초' 형식으로 예쁘게 변환
+        let timeLabel = "";
+        if (elapsedSeconds < 60) {
+            timeLabel = elapsedSeconds + "초";
+        } else {
+            const m = Math.floor(elapsedSeconds / 60);
+            const s = elapsedSeconds % 60;
+            timeLabel = s === 0 ? m + "분" : m + "분 " + s + "초";
+        }
+        
+        const all = Object.values(appState.students);
+        
+        // 누락 방어 로직 포함된 총 경고 횟수 산출
+        const currentTotalEvents = all.reduce((acc, st) => {
+           const eyes = (st.metrics && st.metrics.eyes_closed_count) ? st.metrics.eyes_closed_count : 0;
+           const head = (st.metrics && st.metrics.head_down_count) ? st.metrics.head_down_count : 0;
+           return acc + eyes + head;
+        }, 0);
+        
+        const lastTotal = timelineHistory[timelineHistory.length - 1].total;
+        const eventsInWindow = currentTotalEvents - lastTotal; 
+
+        timelineHistory.push({ time: timeLabel, events: Math.max(0, eventsInWindow), total: currentTotalEvents });
+      } catch (e) {
+        console.error("차트 기록 에러:", e);
+      }
+    }, 10000);
+
+    // 2. 모달 열기 및 리포트 렌더링
+    document.getElementById("btnShowReport").onclick = () => {
+      document.getElementById("reportModal").style.display = "flex";
+      renderReport();
+    };
+
+    document.getElementById("btnCloseReport").onclick = () => {
+      document.getElementById("reportModal").style.display = "none";
+    };
+
+    function renderReport() {
+      try {
+        const all = Object.values(appState.students);
+        
+        const totalWarnings = all.reduce((acc, st) => acc + ((st.metrics && st.metrics.eyes_closed_count) ? st.metrics.eyes_closed_count : 0), 0);
+        const totalAbsent = all.reduce((acc, st) => acc + ((st.metrics && st.metrics.absent_total_sec) ? st.metrics.absent_total_sec : 0), 0);
+        
+        document.getElementById("reportTotalEvents").textContent = `${totalWarnings}회 (부재 ${totalAbsent}초)`;
+        
+        let score = 100 - (totalWarnings * 1.5) - (totalAbsent * 0.5);
+        score = Math.max(0, Math.min(100, Math.round(score)));
+        const scoreEl = document.getElementById("reportScore");
+        scoreEl.textContent = score + "점";
+        scoreEl.style.color = score >= 80 ? "var(--ok)" : (score >= 60 ? "var(--warn)" : "var(--danger)");
+
+        const sorted = [...all].sort((a, b) => {
+            const eyesA = (a.metrics && a.metrics.eyes_closed_count) ? a.metrics.eyes_closed_count : 0;
+            const absentA = (a.metrics && a.metrics.absent_total_sec) ? a.metrics.absent_total_sec : 0;
+            const eyesB = (b.metrics && b.metrics.eyes_closed_count) ? b.metrics.eyes_closed_count : 0;
+            const absentB = (b.metrics && b.metrics.absent_total_sec) ? b.metrics.absent_total_sec : 0;
+            
+            return ((eyesB * 5) + absentB) - ((eyesA * 5) + absentA);
+        }).filter(s => {
+            const eyes = (s.metrics && s.metrics.eyes_closed_count) ? s.metrics.eyes_closed_count : 0;
+            const absent = (s.metrics && s.metrics.absent_total_sec) ? s.metrics.absent_total_sec : 0;
+            return eyes > 0 || absent > 0;
+        }).slice(0, 3);
+
+        const topUl = document.getElementById("topStudentsList");
+        topUl.innerHTML = "";
+        if (sorted.length === 0) {
+            topUl.innerHTML = "<li>경고가 발생한 학생이 없습니다.</li>";
+        } else {
+            sorted.forEach((s, idx) => {
+                const name = s.display_name || `학생 ${idx+1}`;
+                const eyes = (s.metrics && s.metrics.eyes_closed_count) ? s.metrics.eyes_closed_count : 0;
+                const absent = (s.metrics && s.metrics.absent_total_sec) ? s.metrics.absent_total_sec : 0;
+                topUl.innerHTML += `<li>
+                    <span><strong>${idx + 1}위:</strong> ${name}</span>
+                    <span style="color: var(--warn); font-weight: bold;">졸음 ${eyes}회 / 부재 ${absent}초</span>
+                </li>`;
+            });
+        }
+
+        const ctx = document.getElementById('timelineChart').getContext('2d');
+        const labels = timelineHistory.map(d => d.time);
+        const data = timelineHistory.map(d => d.events);
+
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '해당 시간대 징후 발생 건수',
+                    data: data,
+                    borderColor: '#f7b500',
+                    backgroundColor: 'rgba(247, 181, 0, 0.2)',
+                    borderWidth: 2, fill: true, tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { 
+                        min: 0,        // 최소값 0으로 고정
+                        max: 9,        // 최대값 9로 고정
+                        ticks: { stepSize: 1, color: '#9fb0d1' }, 
+                        grid: { color: '#2a3550' } 
+                    },
+                    x: { ticks: { color: '#9fb0d1' }, grid: { color: '#2a3550' } }
+                },
+                plugins: { legend: { labels: { color: '#eef3ff' } } }
+            }
+        });
+      } catch (error) {
+        console.error("리포트 렌더링 중 오류:", error);
+      }
+    }
+
+    // 3. CSV 다운로드 기능
+    document.getElementById("btnDownloadCSV").onclick = () => {
+      try {
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+        csvContent += "학생 이름,최종 상태,누적 졸음 감지(회),누적 부재 시간(초)\n";
+        
+        Object.values(appState.students).forEach((s, idx) => {
+            const name = s.display_name || `학생 ${idx+1}`;
+            const state = s.current_state ? s.current_state.replace('_sign', '') : 'normal';
+            const eyes = (s.metrics && s.metrics.eyes_closed_count) ? s.metrics.eyes_closed_count : 0;
+            const absent = (s.metrics && s.metrics.absent_total_sec) ? s.metrics.absent_total_sec : 0;
+            
+            csvContent += `${name},${state},${eyes},${absent}\n`;
+        });
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `FOCUS_AI_수업참여도_리포트_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.error("CSV 에러:", e);
+      }
+    };
   </script>
 </body>
 </html>
