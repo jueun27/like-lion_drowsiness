@@ -1,0 +1,18 @@
+# 가상환경 폴더 전체 제외 (매우 중요)
+drowsiness/
+venv/
+env/
+.venv/
+
+# 파이썬 캐시 및 실행 파일
+__pycache__/
+*.pyc
+ngrok.exe
+
+# 모델 및 데이터 (용량 방지)
+*.pt
+*.task
+data/
+
+# 기타 설정
+.vscode/
