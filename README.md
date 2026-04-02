@@ -62,14 +62,23 @@ CNN+LSTM이 모든 지표에서 Rule-based 대비 우수한 성능을 보임
 
 ## 📦 주요 라이브러리
 fastapi
+
 uvicorn
+
 mediapipe
+
 opencv-python
+
 torch
+
 scikit-learn
+
 numpy
+
 mss
+
 pywin32
+
 websockets
 
 ## 📋 데이터셋
