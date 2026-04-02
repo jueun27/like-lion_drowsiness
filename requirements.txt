@@ -1,0 +1,11 @@
+opencv-python
+mediapipe
+numpy
+fastapi
+uvicorn
+websockets
+dxcam
+mss
+pywin32 # 특정 창만 캡처
+
+torch

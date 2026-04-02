@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>실시간 화상수업 저참여 징후 대시보드</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2b;
+      --panel-2: #1a2338;
+      --border: #2a3550;
+      --text: #eef3ff;
+      --muted: #9fb0d1;
+      --ok: #2bb673;
+      --warn: #f7b500;
+      --danger: #ef5350;
+      --info: #42a5f5;
+      --shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --gap: 10px;
+      --font: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      background: linear-gradient(180deg, #09101d 0%, #0d1424 100%);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      overflow-y: auto; 
+    }
+
+    .app { display: flex; flex-direction: column; padding: 12px; gap: var(--gap); }
+
+    .panel {
+      background: rgba(19, 26, 43, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: var(--gap);
+      align-items: center;
+    }
+
+    .title-block h1 { margin: 0 0 4px; font-size: 18px; font-weight: 800; }
+    .title-block p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      color: var(--muted); padding: 4px 10px; border-radius: 999px; font-size: 11px;
+    }
+    .chip strong, .chip span { color: var(--text); }
+    .chip.status-online { border-color: rgba(43, 182, 115, 0.4); }
+    .chip.status-connecting { border-color: rgba(66, 165, 245, 0.4); }
+
+    .summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .summary-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 10px; display: flex; flex-direction: column; justify-content: center;
+    }
+    .summary-card .label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .summary-card .value { font-size: 20px; font-weight: 800; line-height: 1; }
+
+    .board { display: flex; flex-direction: column; padding: 12px; margin-bottom: 30px; }
+    .board-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+    .board-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .layout-toggle {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px;
+      border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,0.03);
+    }
+    .layout-btn {
+      border: 0; background: transparent; color: var(--muted); font-size: 11px;
+      font-weight: 700; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+    }
+    .layout-btn.active { background: rgba(66, 165, 245, 0.18); color: #d8ebff; border: 1px solid rgba(66, 165, 245, 0.35); }
+
+    .grid { display: grid; gap: 10px; grid-template-rows: auto; }
+    .grid[data-layout="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid[data-layout="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    /* 뷰 모드 제어 */
+    .grid.view-cam .media-container {
+      aspect-ratio: 16 / 9;
+      height: auto;        /* 고정 height 제거 */
+      max-height: 200px;  /* 이 값 조정 */
+    }
+    .grid.view-cam .spark-wrap, .grid.view-cam .metrics { display: none; }
+    .grid.view-cam .snapshot-placeholder { opacity: 1 !important; }
+    .grid.view-cam .webcam-img { display: block; }
+
+    /* 데이터 모드 시 그래프 가독성을 위해 높이 상향 조정 */
+    .grid.view-data .media-container { height: 150px; } 
+    .grid.view-data .webcam-img { display: none; }
+    .grid.view-data .snapshot-placeholder { display: none; }
+    .grid.view-data .spark-wrap { opacity: 1 !important; display: flex; flex-direction: column; }
+    .grid.view-data .metrics { display: grid; }
+
+    .student-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+      cursor: pointer; display: flex; flex-direction: column; transition: all 0.2s ease;
+    }
+    .student-card:hover { border-color: var(--info); transform: translateY(-2px); }
+
+    .status-badge { border-radius: 999px; padding: 4px 8px; font-size: 10px; font-weight: 700; }
+    .status-normal { color: #bff3d7; background: rgba(43, 182, 115, 0.16); }
+    .status-drowsy { color: #ffe39a; background: rgba(247, 181, 0, 0.15); }
+    .status-absent { color: #ffb5b2; background: rgba(239, 83, 80, 0.16); }
+
+    .media-container {
+      position: relative; margin: 6px 0; border-radius: 6px;
+      overflow: hidden; background: #000; border: 1px solid rgba(255,255,255,0.05);
+    }
+    .webcam-img { width: 100%; height: 100%; object-fit: cover; }
+
+    .snapshot-placeholder {
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; position: absolute; top: 0; left: 0;
+    }
+    .spark-wrap {
+      width: 100%; height: 100%; padding: 12px 8px 8px 8px; position: absolute;
+      top: 0; left: 0; display: none; 
+    }
+    .sparkline { flex: 1; width: 100%; min-height: 0; }
+
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .metric { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 6px; text-align: center; }
+    .metric .v { font-size: 13px; font-weight: 700; }
+    .metric-label { font-size: 9px; color: var(--muted); margin-bottom: 2px; }
+
+    svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <section class="panel topbar">
+        <div class="title-block">
+          <h1>👀 실시간 화상수업 저참여 징후 대시보드</h1>
+          <div class="meta-row">
+            <div class="chip">세션 ID: <strong id="sessionInfo">demo_001</strong></div>
+            <div class="chip">입력: 1920×1080 / 10fps</div>
+            <div class="chip status-connecting" id="wsStatusChip">WS: <span id="wsStatus">connecting</span></div>
+            <div class="chip">업데이트: <span id="lastUpdated">-</span></div>
+            <div class="chip">최근 이벤트: <span id="lastEvent">-</span></div>
+          </div>
+        </div>
+        <div class="summary-cards">
+          <div class="summary-card"><div class="label">감시 대상</div><div class="value" id="sumStudents">16</div></div>
+          <div class="summary-card"><div class="label">경고 상태</div><div class="value" id="sumWarnings">0</div></div>
+          <div class="summary-card"><div class="label">누적 이벤트</div><div class="value" id="sumEvents">0</div></div>
+          <div class="summary-card"><div class="label">총 부재 시간</div><div class="value" id="sumAbsent">0s</div></div>
+        </div>
+      </section>
+
+      <section class="panel board">
+        <div class="board-head">
+          <h2 id="boardTitle">학생 참여 현황</h2>
+          <div class="board-controls">
+            <div class="layout-toggle">
+                <button type="button" class="layout-btn" id="btnViewCam">웹캠 모드</button>
+                <button type="button" class="layout-btn" id="btnViewData">데이터 모드</button>
+            </div>
+            <div class="layout-toggle">
+              <button type="button" class="layout-btn" id="btnLayout3" data-layout="3">3×3</button>
+              <button type="button" class="layout-btn" id="btnLayout4" data-layout="4">4×4</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid" id="studentGrid" data-layout="4"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const WS_URL = "ws://localhost:8000/ws";
+    // const WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+    const SELECTED_STUDENT_KEY = "dashboard_selected_student_id";
+    const DETAIL_SNAPSHOT_KEY = "dashboard_selected_student_snapshot";
+
+    window.appState = {
+      students: {},
+      gridLayout: 4,
+      viewMode: 'cam'
+    };
+    const appState = window.appState;
+
+    function createInitialStudent(id) {
+      return {
+        student_id: id, display_name: `학생 ${id.replace("tile_", "")}`,
+        current_state: "normal", current_score: 0.1,
+        metrics: { eyes_closed_count: 0, head_down_count: 0, absent_total_sec: 0, warning_count: 0, drowsy_count: 0, avg_drowsy_sec: 0 },
+        history: { score: Array(24).fill(0.1) },
+        last_update_ms: 0, image: null
+      };
+    }
+
+    function initStudents() {
+      for (let i = 1; i <= 16; i++) {
+        const id = `tile_${String(i).padStart(2, "0")}`;
+        appState.students[id] = createInitialStudent(id);
+      }
+      appState.gridLayout = Number(localStorage.getItem("dashboard_grid_layout")) || 4;
+      appState.viewMode = localStorage.getItem("dashboard_view_mode") || 'cam';
+    }
+
+    function buildSparklineSVG(values) {
+      if (!values || values.length < 2) return "";
+      //const min = Math.min(...values);
+      //const max = Math.max(...values);
+      //const range = (max - min) || 1;
+	  
+      const min = 0;
+      const max = 1;
+      const range = 1;
+      
+      
+      // viewBox="0 0 100 40" 기준으로 y값을 5~35 사이로 배치하여 잘림 방지
+      const points = values.map((v, i) => {
+        const x = (i / (values.length - 1)) * 100;
+        const y = 35 - ((v - min) / range) * 30; 
+        return `${x},${y}`;
+      }).join(" ");
+      
+	  const thresholdY = 35 - 0.3 * 30;  // = 26
+
+      return `
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+          <line x1="0" y1="${thresholdY}" x2="100" y2="${thresholdY}"
+            stroke="#ff7043" stroke-width="0.8" stroke-dasharray="3,2" />
+          <polyline points="${points}" fill="none" stroke="#42a5f5" stroke-width="1.0" 
+            stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById("studentGrid");
+      const limit = appState.gridLayout === 3 ? 9 : 16;
+      grid.dataset.layout = appState.gridLayout;
+      grid.className = `grid view-${appState.viewMode}`;
+      
+      const visible = Object.values(appState.students).slice(0, limit);
+      grid.innerHTML = visible.map(s => `
+        <div class="student-card" id="card-${s.student_id}" onclick="handleCardClick('${s.student_id}')">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start">
+            <div><div style="font-weight:700">${s.display_name}</div><div style="font-size:11px;color:var(--muted)">${s.student_id}</div></div>
+            <span class="status-badge status-normal" id="badge-${s.student_id}">정상</span>
+          </div>
+          <div class="media-container">
+            <img class="webcam-img" id="img-${s.student_id}" src="">
+            <div class="snapshot-placeholder" id="placeholder-${s.student_id}">👤 대기 중</div>
+            <div class="spark-wrap" id="sparkwrap-${s.student_id}">
+                <div style="font-size:10px;color:var(--muted);text-align:center;margin-bottom:8px;">눈감음 점수 추이 (0.3 이상시 졸음)</div>
+                <div class="sparkline" id="svg-${s.student_id}"></div>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="metric-label">눈 감음</div><div class="v" id="eye-${s.student_id}">0</div></div>
+            <div class="metric"><div class="metric-label">평균 눈 감음 시간</div><div class="v" id="head-${s.student_id}">0</div></div>
+            <div class="metric"><div class="metric-label">부재</div><div class="v" id="ab-${s.student_id}">0s</div></div>
+          </div>
+        </div>
+      `).join("");
+      
+      updateButtonStates();
+      visible.forEach(updateDOMForStudent);
+    }
+
+    function handleCardClick(id) {
+        const student = appState.students[id];
+        localStorage.setItem(SELECTED_STUDENT_KEY, id);
+        localStorage.setItem(DETAIL_SNAPSHOT_KEY, JSON.stringify(student));
+        window.open(`sample_detail_updated.html?id=${id}`, "_blank", "width=900,height=800");
+    }
+
+    function updateDOMForStudent(student) {
+      const card = document.getElementById(`card-${student.student_id}`);
+      if (!card) return;
+
+      const badge = document.getElementById(`badge-${student.student_id}`);
+      const state = student.current_state;
+      badge.className = `status-badge status-${state === 'normal' ? 'normal' : (state.includes('absent') ? 'absent' : 'drowsy')}`;
+      badge.textContent = state === 'normal' ? '정상' : (state.includes('absent') ? '부재' : '졸음');
+
+      if (student.image) {
+          document.getElementById(`img-${student.student_id}`).src = `data:image/jpeg;base64,${student.image}`;
+          document.getElementById(`placeholder-${student.student_id}`).style.display = 'none';
+      }
+
+      document.getElementById(`svg-${student.student_id}`).innerHTML = buildSparklineSVG(student.history.score);
+      //document.getElementById(`eye-${student.student_id}`).textContent = student.metrics.eyes_closed_count;
+      //document.getElementById(`head-${student.student_id}`).textContent = student.metrics.head_down_count;
+	  document.getElementById(`eye-${student.student_id}`).textContent
+        = `${student.metrics.drowsy_count}회`;
+	  document.getElementById(`head-${student.student_id}`).textContent
+        = `평균 ${student.metrics.avg_drowsy_sec}초`;
+
+      document.getElementById(`ab-${student.student_id}`).textContent = `총 ${student.metrics.absent_total_sec}초`;
+    }
+
+    function updateButtonStates() {
+        document.getElementById("btnViewCam").classList.toggle("active", appState.viewMode === 'cam');
+        document.getElementById("btnViewData").classList.toggle("active", appState.viewMode === 'data');
+        document.getElementById("btnLayout3").classList.toggle("active", appState.gridLayout === 3);
+        document.getElementById("btnLayout4").classList.toggle("active", appState.gridLayout === 4);
+    }
+
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+      ws.onopen = () => document.getElementById("wsStatus").textContent = "online";
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        const s = appState.students[data.student_id];
+        if (s) {
+          s.current_state = data.state;
+          s.image = data.image;
+          s.history.score.push(data.score || 0.1);
+          s.history.score.shift();
+          //if (data.event_label === 'eyes_closed_long') s.metrics.eyes_closed_count++;
+          //if (data.event_label === 'head_down_long') s.metrics.head_down_count++;
+          //if (data.event_label === 'face_absent') s.metrics.absent_total_sec += 5;
+		  
+		  if (data.drowsy_count   !== undefined) s.metrics.drowsy_count   = data.drowsy_count;
+		  if (data.avg_drowsy_sec !== undefined) s.metrics.avg_drowsy_sec = data.avg_drowsy_sec;
+		  if (data.event_label === 'face_absent') s.metrics.absent_total_sec += 1;
+		  
+          updateDOMForStudent(s);
+          document.getElementById("lastUpdated").textContent = new Date().toLocaleTimeString();
+          if (data.event_label) document.getElementById("lastEvent").textContent = `${s.display_name}: ${data.event_label}`;
+          
+          // 전역 요약 업데이트
+          const all = Object.values(appState.students);
+          document.getElementById("sumWarnings").textContent = all.filter(st => st.current_state !== 'normal').length;
+          document.getElementById("sumEvents").textContent = all.reduce((acc, st) => acc + st.metrics.eyes_closed_count + st.metrics.head_down_count, 0);
+          document.getElementById("sumAbsent").textContent = all.reduce((acc, st) => acc + st.metrics.absent_total_sec, 0) + "s";
+        }
+      };
+      ws.onclose = () => setTimeout(connect, 3000);
+    }
+
+    function bootstrap() {
+      initStudents();
+      renderGrid();
+      document.getElementById("btnViewCam").onclick = () => { appState.viewMode = 'cam'; localStorage.setItem("dashboard_view_mode", 'cam'); renderGrid(); };
+      document.getElementById("btnViewData").onclick = () => { appState.viewMode = 'data'; localStorage.setItem("dashboard_view_mode", 'data'); renderGrid(); };
+      document.getElementById("btnLayout3").onclick = () => { appState.gridLayout = 3; localStorage.setItem("dashboard_grid_layout", 3); renderGrid(); };
+      document.getElementById("btnLayout4").onclick = () => { appState.gridLayout = 4; localStorage.setItem("dashboard_grid_layout", 4); renderGrid(); };
+      connect();
+    }
+    bootstrap();
+  </script>
+</body>
+</html>
