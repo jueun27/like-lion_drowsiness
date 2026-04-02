@@ -27,25 +27,18 @@ CSV 다운로드: 학생별 데이터 엑셀 저장 가능
 
 
 ## 📦 주요 라이브러리
+```
 fastapi
-
 uvicorn
-
 mediapipe
-
 opencv-python
-
 torch
-
 scikit-learn
-
 numpy
-
 mss
-
 pywin32
-
 websockets
+```
 
 ## 📋 데이터셋
 
